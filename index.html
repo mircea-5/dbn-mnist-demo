@@ -1,0 +1,1151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DBN · MNIST Demo</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #f4f5f7;
+  --s1: #ffffff;
+  --s2: #f0f1f5;
+  --brd: rgba(0,0,0,0.09);
+  --text: #1d1d2e;
+  --muted: #7a7a9a;
+  --mono: 'JetBrains Mono', monospace;
+  --ui: 'Syne', system-ui, sans-serif;
+}
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--ui); font-size: 1.2em; }
+body { display: flex; flex-direction: column; align-items: center; padding: 2em; min-height: 100vh; }
+
+header {
+  margin-top: 1em;
+  margin-bottom: 1.2em;
+  border-bottom: 1px solid var(--brd);
+}
+header h1 { font-size: 2rem; font-weight: 800; color: var(--text); text-align: center;}
+header .subtitle { font-family: var(--mono); font-size: .68rem; color: var(--muted); margin-top: .3em; line-height: 1.5; text-align: center;}
+header .arch { font-family: var(--mono); font-size: .65rem; color: var(--muted); }
+header .pill {
+  margin-left: auto; font-size: .62rem; padding: 2px 9px;
+  border-radius: 20px; border: 1px solid rgba(22,163,74,.35); color: #16a34a; font-family: var(--mono);
+}
+
+.app { display: flex; align-items: flex-start; }
+
+/* Responsive heading */
+header h1 { font-size: clamp(1.3rem, 5vw, 2rem); }
+
+/* Main canvas wrapper */
+.main-canvas-wrap { padding: 1rem 1rem 0 1rem; overflow-x: auto; }
+#main-canvas { display: block; touch-action: none;}
+
+/* Below-canvas two-column row */
+.below-canvas-row { display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+.classify-col { flex-shrink: 0; min-width: 130px; }
+.generate-col { flex: 1; min-width: 130px;}
+
+/* Info row: legend only */
+.info-row { display: flex; gap: 10px; margin-top: 10px; align-items: stretch; }
+
+.card {
+  background: var(--s1); border: 1px solid var(--brd);
+  border-radius: 9px; padding: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  height: 100%
+}
+.clabel {
+  display: block; font-size: .56rem; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--muted); font-family: var(--mono); margin-bottom: 8px;
+}
+.btn-row { display: flex; gap: 10px; }
+.btn {
+  flex: 1; padding: 7px 4px; border-radius: 6px;
+  border: 1px solid var(--brd); background: var(--s2);
+  color: var(--text); font-family: var(--ui); font-size: 0.7rem; font-weight: 700;
+  cursor: pointer; transition: background .12s;
+}
+.btn:hover { background: #e8e8f0; }
+.btn-run { background: #e8f6ff; border-color: #38bdf8; color: #0284c7; }
+.btn-run:hover { background: #d0eeff; }
+.k-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 6px; margin-top: 8px;
+}
+.k-row span { font-size: .66rem; color: var(--muted); font-family: var(--mono); }
+.k-row input {
+  width: 70px; padding: 4px 6px; background: var(--s2);
+  border: 1px solid var(--brd); border-radius: 5px;
+  color: var(--text); font-family: var(--mono); font-size: .68rem; text-align: right;
+  color-scheme: light;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.1} }
+
+.leg { display: flex; flex-direction: column; gap: 5px; }
+.leg-row { display: flex; align-items: center; gap: 7px; font-size: .6rem; color: var(--muted); font-family: var(--mono); }
+.leg-ln { width: 14px; height: 2px; border-radius: 1px; }
+
+#overlay {
+  position: fixed; inset: 0; background: rgba(244,245,247,0.96);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  z-index: 999; gap: 12px; transition: opacity .4s;
+}
+.sp { width: 28px; height: 28px; border: 2px solid rgba(0,0,0,0.1); border-top-color: #38bdf8; border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+#overlay h2 { font-size: .9rem; font-weight: 800; color: var(--text); }
+#overlay p  { font-size: .68rem; color: var(--muted); font-family: var(--mono); }
+
+/* Project info section */
+.project-info {
+  width: 100%; max-width: 680px; margin-top: 3rem; margin-bottom: 2rem;
+  border-top: 1px solid var(--brd); padding-top: 2rem;
+  padding-bottom: 2rem;
+}
+.project-info h2 {
+  font-size: 1.1rem; font-weight: 800; letter-spacing: -.01em;
+  color: var(--text); margin-bottom: 1rem;
+}
+.project-info p {
+  font-size: .72rem; color: var(--muted); font-family: var(--mono);
+  line-height: 1.7; margin-bottom: .75rem;
+}
+.project-info .arch-diagram {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin: 1rem 0; font-family: var(--mono); font-size: .68rem; color: var(--muted);
+}
+.arch-diagram .layer-box {
+  background: var(--s1); border: 1px solid var(--brd); border-radius: 6px;
+  padding: 5px 10px; color: var(--text); font-weight: 600; font-size: .66rem;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+}
+.arch-diagram .arrow { color: var(--muted); font-size: .8rem; }
+.info-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 1rem;
+}
+.info-card {
+  background: var(--s1); border: 1px solid var(--brd); border-radius: 8px;
+  padding: 12px 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+.info-card .ic-label {
+  font-size: .54rem; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--muted); font-family: var(--mono); margin-bottom: 5px; display: block;
+}
+.info-card p {
+  font-size: .68rem; color: var(--text); margin-bottom: 0; line-height: 1.55;
+}
+
+@media (max-width: 540px) {
+  body { padding: 1em; }
+  .below-canvas-row { flex-direction: column; }
+  .classify-col { width: auto !important; flex-shrink: unset !important; }
+  .info-grid { grid-template-columns: 1fr; }
+  .project-info { max-width: 100%; }
+  .arch-diagram { flex-direction: column; align-items: flex-start; gap: 4px; }
+}
+</style>
+</head>
+
+<body>
+
+<div id="overlay">
+  <div class="sp"></div>
+  <h2>Loading weights</h2>
+  <p id="lmsg">fetching dbn_weights.bin…</p>
+</div>
+
+<header>
+  <h1>Deep Belief Network</h1>
+  <p class="subtitle">Draw a digit to classify · click a softmax unit to generate · watch the network activate</p>
+</header>
+
+<div class="app">
+  <div class="main-canvas-wrap">
+    <canvas id="main-canvas"></canvas>
+
+    <!-- Two columns aligned to canvas layout (widths set by JS) -->
+    <div class="below-canvas-row">
+      <div class="classify-col" id="classify-col">
+        <div class="card">
+          <span class="clabel">classify</span>
+          <div class="btn-row">
+            <button class="btn" onclick="clearAll()">Clear</button>
+            <button class="btn btn-run" onclick="runClassify()">Run ↑</button>
+          </div>
+          <div class="k-row"><span>gibbs k</span><input type="number" id="kcls" value="50" min="1" max="500"></div>
+        </div>
+      </div>
+
+      <div class="generate-col" id="generate-col">
+        <div class="card">
+          <span class="clabel">generate</span>
+          <div class="k-row"><span>gibbs k</span><input type="number" id="kgen" value="1000" min="1" max="5000"></div>
+          <p style="font-size:.58rem;color:var(--muted);margin-top:7px;font-family:var(--mono)">click a softmax unit on canvas</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Project info section -->
+<section class="project-info">
+  <h2>About this project</h2>
+  <h6>Author: Yerbol Kuttybay</h6>
+  <p>
+    This is an interactive demo of a <strong>Deep Belief Network (DBN)</strong> trained on the MNIST handwritten-digit dataset.
+    A DBN is a generative probabilistic model built by stacking multiple Restricted Boltzmann Machines (RBMs).
+    It learns to both <em>recognize</em> patterns (bottom-up) and <em>generate</em> plausible examples (top-down).
+  </p>
+
+  <div class="arch-diagram">
+    <span class="layer-box">Input (784)</span>
+    <span class="arrow">→</span>
+    <span class="layer-box">RBM 0 · Hidden (500)</span>
+    <span class="arrow">→</span>
+    <span class="layer-box">RBM 1 · Hidden (500)</span>
+    <span class="arrow">→</span>
+    <span class="layer-box">Top RBM (2000)</span>
+    <span class="arrow">+</span>
+    <span class="layer-box">Softmax (10)</span>
+  </div>
+
+  <div class="info-grid">
+    <div class="info-card">
+      <span class="ic-label">Training</span>
+      <p>Greedy layer-wise pre-training on 60 000 MNIST samples. Each RBM is trained with Contrastive Divergence (CD-1), then the top layer jointly models the hidden representation and class label via a softmax unit.</p>
+    </div>
+    <div class="info-card">
+      <span class="ic-label">How to use</span>
+      <p>Draw a digit (0–9) in the canvas, then press <strong>Run ↑</strong> to classify it. To generate a digit, click any of the <strong>softmax units</strong> on the right side of the canvas — the network will hallucinate a matching digit.</p>
+    </div>
+    <div class="info-card">
+      <span class="ic-label">Recognition pass ↑</span>
+      <p>Pixel activations propagate upward through two hidden layers into the top RBM. Connections light up in <span style="color:#38bdf8;font-weight:600">cyan</span>. Gibbs sampling refines the top-layer state and drives the softmax prediction.</p>
+    </div>
+    <div class="info-card">
+      <span class="ic-label">Generative pass ↓</span>
+      <p>After Gibbs sampling on the top RBM, the network reconstructs pixels by propagating activations downward. Connections light up in <span style="color:#fb7185;font-weight:600">pink</span>. The result is rendered into the drawing pad.</p>
+    </div>
+  </div>
+</section>
+
+<script>
+// ─────────────────────────────────────────────────────────────
+//  LAYOUT CONSTANTS
+//  All positions are derived from a few root values so that
+//  resizing just changes UNIT_R and everything reflows.
+// ─────────────────────────────────────────────────────────────
+
+// ── ADJUSTABLE: drawing brush ──────────────────────────────
+// Change BRUSH_RADIUS to make strokes thinner (1) or thicker (3+)
+const BRUSH_RADIUS = 1.4;   // in 28×28 pixel-grid units
+// ──────────────────────────────────────────────────────────
+
+let UNIT_R   = 12;   // circle radius px (recomputed responsively in layout())
+const GAP    = 6;    // gap between circle edges
+let STEP     = UNIT_R * 2 + GAP;  // center-to-center (recomputed in layout())
+
+// Softmax units use a larger, independent radius
+let SOFT_R    = 16;               // softmax circle radius
+let SOFT_STEP = SOFT_R * 2 + 8;  // softmax center-to-center
+
+// Unit counts per layer (matching your sketch)
+const N_TOP    = 14;   // top RBM (2000)
+const N_H1     = 6;    // hidden layer 1 (500) — upper hidden
+const N_H0     = 6;    // hidden layer 0 (500) — lower hidden
+const N_VIS    = 8;    // visible (784)
+const N_SOFT   = 10;   // softmax units (right side, same row as H1)
+
+// Row vertical positions (center of circles), computed after sizing
+let ROW_TOP, ROW_H1, ROW_H0, ROW_VIS;
+
+// Canvas left-edge x for each left-side group
+let X_LEFT;
+
+// Softmax units x-start (right side, aligned to top of canvas)
+let X_SOFT;
+
+// Canvas (draw region) bounding box
+let CV = { x:0, y:0, w:0, h:0 };
+
+// Total canvas dimensions
+let CW, CH;
+
+const mc   = document.getElementById('main-canvas');
+const mctx = mc.getContext('2d');
+
+function layout() {
+  // ── RESPONSIVE SIZING ───────────────────────────────────────
+  // Find the largest UNIT_R that fits available viewport width
+  const availW = Math.min(window.innerWidth - 48, 900);
+  UNIT_R = 12;
+  for (let r = 12; r >= 6; r--) {
+    const s  = r * 2 + GAP;
+    const sr = Math.round(r * 1.35);
+    const ss = sr * 2 + 8;
+    const cw = (r + 4) + (N_TOP * s - GAP) + 48 + (N_SOFT * ss - 8) + sr + 4;
+    if (cw <= availW) { UNIT_R = r; break; }
+  }
+  STEP      = UNIT_R * 2 + GAP;
+  SOFT_R    = Math.round(UNIT_R * 1.35);
+  SOFT_STEP = SOFT_R * 2 + 8;
+  // ────────────────────────────────────────────────────────────
+
+  // Canvas (draw region) width = width of 8 visible-unit row
+  const visRowW = N_VIS * STEP - GAP;
+  CV.w = visRowW;
+  CV.h = visRowW; // square
+
+  X_LEFT = UNIT_R + 4;
+
+  const SOFT_GAP = 48;
+  const topRowW  = N_TOP * STEP - GAP;
+  const softRowW = N_SOFT * SOFT_STEP - 8;
+  CW = X_LEFT + topRowW + SOFT_GAP + softRowW + SOFT_R + 4;
+
+  X_SOFT = X_LEFT + topRowW + SOFT_GAP;
+
+  // Vertical layout — enough top padding for the "top (2000)" label above the first row
+  const TOP_PAD = UNIT_R + 28;
+  ROW_TOP = TOP_PAD;
+  const ROW_GAP = 20;
+  ROW_H1  = ROW_TOP + STEP + ROW_GAP;
+  ROW_H0  = ROW_H1  + STEP + ROW_GAP;
+  ROW_VIS = ROW_H0  + STEP + ROW_GAP;
+
+  // Canvas region sits just below visible units row
+  CV.x = X_LEFT;
+  CV.y = ROW_VIS + UNIT_R + 8;
+  CH   = CV.y + CV.h + 16;
+
+  mc.width  = CW;
+  mc.height = CH;
+
+  // Align classify column under the NN section (left of softmax)
+  const classifyColEl = document.getElementById('classify-col');
+  if (classifyColEl) {
+    if (window.innerWidth > 540) {
+      classifyColEl.style.width = X_SOFT + 'px';
+      classifyColEl.style.flexShrink = '0';
+    } else {
+      classifyColEl.style.width = '';
+      classifyColEl.style.flexShrink = '';
+    }
+  }
+}
+
+// Unit center positions
+function unitPos(layer, idx) {
+  // layer: 'top'|'h1'|'h0'|'vis'|'soft'
+  // idx: 0-based
+  switch(layer) {
+    case 'top':  return { x: X_LEFT + idx * STEP + UNIT_R, y: ROW_TOP };
+    case 'h1':   return { x: X_LEFT + idx * STEP + UNIT_R, y: ROW_H1 };
+    case 'h0':   return { x: X_LEFT + idx * STEP + UNIT_R, y: ROW_H0 };
+    case 'vis':  return { x: X_LEFT + idx * STEP + UNIT_R, y: ROW_VIS };
+    case 'soft': return { x: X_SOFT + idx * SOFT_STEP + SOFT_R, y: ROW_H1 };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  STATE
+// ─────────────────────────────────────────────────────────────
+const pixels   = new Float32Array(784);
+let layerActs  = { top: null, h1: null, h0: null, vis: null };
+let softProbs  = new Float32Array(10).fill(0.1);
+let activeDigit = -1;
+
+// Edge animation state: which pair of layers is lit, direction, brightness
+let edgeSt = { on: false, fromLayer: '', toLayer: '', mode: 'rec', t: 0 };
+
+// Canvas status+result panel state
+let panelSt = { state: '', msg: 'loading…', digit: null, conf: null, type: null };
+
+// Softmax hover tracking
+let hoveredSoft = -1;
+
+
+// (idle flicker removed — units are static dim circles when not running)
+
+// ─────────────────────────────────────────────────────────────
+//  DRAW EVERYTHING
+// ─────────────────────────────────────────────────────────────
+const COL_REC  = '#38bdf8';
+const COL_GEN  = '#fb7185';
+const COL_HOT  = '#fbbf24';
+const COL_SOFT = '#16a34a';
+const COL_DIM  = '#dadaec';
+const COL_IDLE = '#e8e8f4';
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x+r, y); ctx.lineTo(x+w-r, y); ctx.quadraticCurveTo(x+w, y, x+w, y+r);
+  ctx.lineTo(x+w, y+h-r); ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+  ctx.lineTo(x+r, y+h); ctx.quadraticCurveTo(x, y+h, x, y+h-r);
+  ctx.lineTo(x, y+r); ctx.quadraticCurveTo(x, y, x+r, y);
+  ctx.closePath();
+}
+
+function drawStatusPanel(ctx) {
+  const rx = CV.x + CV.w + 16;
+  const ry = CV.y;
+  const rw = CW - rx - 8;
+  const rh = CV.h;
+  if (rw < 50) return;
+
+  ctx.save();
+
+  // Card background
+  roundRect(ctx, rx, ry, rw, rh, 8);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.08)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  const cx = rx + rw / 2;
+  const dotR = Math.max(3, UNIT_R * 0.28);
+
+  const dotColor = panelSt.state === 'running' ? '#f59e0b'
+                 : panelSt.state === 'done'    ? '#16a34a'
+                 : panelSt.state === 'err'     ? '#ef4444'
+                 : '#9090b0';
+  const msgFont = Math.max(8, Math.min(11, UNIT_R - 1));
+
+  // ── STATUS ROW (always shown, pinned to bottom) ───────
+  ctx.font = `400 ${msgFont}px "JetBrains Mono", monospace`;
+  const txtW   = Math.min(ctx.measureText(panelSt.msg).width, rw - 20);
+  const groupW = dotR * 2 + 4 + txtW;
+  const gx     = cx - groupW / 2;
+  const sy     = ry + rh - dotR * 2 - 10;
+
+  ctx.beginPath();
+  ctx.arc(gx + dotR, sy + dotR, dotR, 0, Math.PI * 2);
+  ctx.fillStyle = dotColor;
+  ctx.fill();
+
+  ctx.fillStyle = '#7a7a9a';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(panelSt.msg, gx + dotR * 2 + 4, sy + dotR, rw - 20);
+
+  // ── RESULT AREA (upper portion, shown when available) ─
+  if (panelSt.digit !== null) {
+    const resultH = rh - (dotR * 2 + 24); // leave room for status row
+
+    // Divider above status row
+    ctx.strokeStyle = 'rgba(0,0,0,0.07)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(rx + 10, ry + resultH);
+    ctx.lineTo(rx + rw - 10, ry + resultH);
+    ctx.stroke();
+
+    const typeFont = Math.max(7, Math.min(10, UNIT_R - 1));
+    ctx.fillStyle = '#9090b0';
+    ctx.font = `400 ${typeFont}px "JetBrains Mono", monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(panelSt.type === 'classify' ? 'PREDICTION' : 'GENERATED', cx, ry + 10);
+
+    const bigSz = Math.min(rw * 0.65, resultH * 0.48);
+    ctx.fillStyle = '#1d1d2e';
+    ctx.font = `800 ${bigSz}px "Syne", sans-serif`;
+    ctx.textBaseline = 'middle';
+    ctx.fillText(panelSt.digit, cx, ry + resultH * 0.52);
+
+    if (panelSt.type === 'classify' && panelSt.conf !== null) {
+      const confSz = Math.max(9, Math.min(14, UNIT_R));
+      ctx.fillStyle = '#16a34a';
+      ctx.font = `600 ${confSz}px "JetBrains Mono", monospace`;
+      ctx.textBaseline = 'bottom';
+      ctx.fillText((panelSt.conf * 100).toFixed(1) + '%', cx, ry + resultH - 6);
+    }
+  }
+
+  ctx.restore();
+}
+
+function render() {
+  const ctx = mctx;
+  ctx.clearRect(0, 0, CW, CH);
+  // Fill canvas background with page color
+  ctx.fillStyle = '#f4f5f7';
+  ctx.fillRect(0, 0, CW, CH);
+
+  // ── CONNECTIONS ─────────────────────────────────────────
+  // Define which layers connect to which
+  const connections = [
+    { from: 'vis', to: 'h0' },
+    { from: 'h0',  to: 'h1' },
+    { from: 'h1',  to: 'top' },
+    { from: 'soft', to: 'top' },
+  ];
+
+  const CONNS_PER_UNIT = 3; // fan-out per unit shown
+
+  for (const { from, to } of connections) {
+    const nF = layerN(from), nT = layerN(to);
+    const isLit = edgeSt.on && edgeSt.fromLayer === from && edgeSt.toLayer === to;
+    const isLitRev = edgeSt.on && edgeSt.fromLayer === to && edgeSt.toLayer === from;
+    const lit  = isLit || isLitRev;
+    const col  = edgeSt.mode === 'rec' ? COL_REC : COL_GEN;
+    const br   = lit ? edgeSt.t : 0;
+
+    // Sample a fixed set of connections
+    const pairs = sampledPairs(nF, nT, 18);
+    for (const [a, b] of pairs) {
+      const pA = unitPos(from, a), pB = unitPos(to, b);
+      ctx.globalAlpha = lit ? 0.08 + br * 0.65 : 0.12;
+      ctx.strokeStyle = lit ? col : 'rgba(0,0,0,0.15)';
+      ctx.lineWidth   = lit ? 0.5 + br * 1.2 : 0.5;
+      ctx.beginPath();
+      ctx.moveTo(pA.x, pA.y);
+      ctx.lineTo(pB.x, pB.y);
+      ctx.stroke();
+    }
+  }
+  ctx.globalAlpha = 1;
+
+  // ── CANVAS REGION (draw area) ────────────────────────────
+  // White background for drawing pad
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(CV.x, CV.y, CV.w, CV.h);
+  // Render the pixel buffer into the canvas rect
+  const iw = CV.w / 28, ih = CV.h / 28;
+  for (let py = 0; py < 28; py++) {
+    for (let px = 0; px < 28; px++) {
+      const v = pixels[py * 28 + px];
+      if (v < 0.01) continue;
+      ctx.fillStyle = `rgba(20,20,35,${v})`;
+      ctx.fillRect(CV.x + px * iw, CV.y + py * ih, iw + 0.5, ih + 0.5);
+    }
+  }
+  // Canvas border
+  ctx.strokeStyle = 'rgba(0,0,0,0.12)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(CV.x, CV.y, CV.w, CV.h);
+
+  // ── UNIT CIRCLES ────────────────────────────────────────
+  drawLayerUnits(ctx, 'top',  N_TOP,  layerActs.top);
+  drawLayerUnits(ctx, 'h1',   N_H1,   layerActs.h1);
+  drawLayerUnits(ctx, 'h0',   N_H0,   layerActs.h0);
+  drawLayerUnits(ctx, 'vis',  N_VIS,  layerActs.vis);
+
+  // Softmax units (special: show digit label + prob ring)
+  drawSoftmaxUnits(ctx);
+
+  // ── STATUS + RESULT PANEL (right of drawing pad) ────────
+  drawStatusPanel(ctx);
+
+  // ── LAYER LABELS ────────────────────────────────────────
+  const lblFont = Math.max(9, Math.min(13, UNIT_R + 1));
+  ctx.font = `${lblFont}px "JetBrains Mono", monospace`;
+  ctx.fillStyle = '#9999bb';
+
+  // Side labels: placed after the WIDEST left-side layer (N_VIS = 8)
+  const labelX = X_LEFT + N_VIS * STEP + 10;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('visible (784)', labelX, ROW_VIS);
+  ctx.fillText('hidden  (500)', labelX, ROW_H0);
+  ctx.fillText('hidden  (500)', labelX, ROW_H1);
+
+  // Top label: centered over top row, comfortably above circles
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillText('top (2000)', X_LEFT + (N_TOP * STEP - GAP) / 2, ROW_TOP - UNIT_R - 6);
+
+  // Softmax label: centered over softmax row
+  ctx.fillText('softmax (10)', X_SOFT + (N_SOFT * SOFT_STEP - 8) / 2, ROW_H1 - SOFT_R - Math.round(SOFT_R * 0.3) - 6);
+  ctx.textBaseline = 'alphabetic';
+}
+
+function drawLayerUnits(ctx, layer, n, acts) {
+  for (let i = 0; i < n; i++) {
+    const { x, y } = unitPos(layer, i);
+    const v = acts ? Math.max(0, Math.min(1, acts[i])) : 0;
+    drawUnit(ctx, x, y, v, COL_HOT);
+  }
+}
+
+function drawUnit(ctx, x, y, v, litCol) {
+  ctx.beginPath();
+  ctx.arc(x, y, UNIT_R, 0, Math.PI * 2);
+
+  if (v > 0.03) {
+    // Amber glow — works on light background
+    const r = (180 + v * 75)  | 0;
+    const g = (120 + v * 80)  | 0;
+    const b = (20  + v * 10)  | 0;
+    ctx.fillStyle = `rgb(${r},${g},${b})`;
+    ctx.shadowColor = `rgba(251,191,36,${v * 0.5})`;
+    ctx.shadowBlur  = v * 10;
+  } else {
+    ctx.fillStyle  = COL_DIM;
+    ctx.shadowBlur = 0;
+  }
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  ctx.strokeStyle = v > 0.08 ? `rgba(180,120,0,${v * 0.35})` : 'rgba(0,0,0,0.08)';
+  ctx.lineWidth   = 0.8;
+  ctx.stroke();
+}
+
+function drawSoftmaxUnits(ctx) {
+  const fontSize = Math.max(9, Math.round(SOFT_R * 0.85));
+  for (let d = 0; d < 10; d++) {
+    const { x, y } = unitPos('soft', d);
+    const p = softProbs[d];
+    const isActive  = d === activeDigit;
+    const isHovered = d === hoveredSoft;
+
+    // Background circle
+    ctx.beginPath();
+    ctx.arc(x, y, SOFT_R, 0, Math.PI * 2);
+    ctx.fillStyle = isActive
+      ? 'rgba(251,113,133,0.15)'
+      : isHovered
+        ? 'rgba(99,179,237,0.13)'
+        : COL_DIM;
+    if (isHovered && !isActive) {
+      ctx.shadowColor = 'rgba(99,179,237,0.35)';
+      ctx.shadowBlur  = SOFT_R * 0.6;
+    } else {
+      ctx.shadowBlur = 0;
+    }
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Probability arc (green ring)
+    if (p > 0.015) {
+      ctx.beginPath();
+      ctx.arc(x, y, SOFT_R, -Math.PI / 2, -Math.PI / 2 + p * Math.PI * 2);
+      ctx.strokeStyle = COL_SOFT;
+      ctx.lineWidth   = Math.max(2.5, SOFT_R * 0.18);
+      ctx.globalAlpha = 0.3 + p * 0.7;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    // Border
+    ctx.beginPath();
+    ctx.arc(x, y, SOFT_R, 0, Math.PI * 2);
+    ctx.strokeStyle = isActive
+      ? '#fb7185'
+      : isHovered
+        ? 'rgba(99,179,237,0.7)'
+        : p > 0.015
+          ? `rgba(22,163,74,${0.25 + p * 0.6})`
+          : 'rgba(0,0,0,0.1)';
+    ctx.lineWidth = isActive ? 2 : isHovered ? 1.5 : 1;
+    ctx.stroke();
+
+    // Digit label
+    ctx.fillStyle = p > 0.3 ? '#1d1d2e'
+                  : isActive  ? '#fb7185'
+                  : isHovered ? '#4a90d9'
+                  : '#9090b0';
+    ctx.font = `${p > 0.2 ? 600 : 400} ${fontSize}px "JetBrains Mono", monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(d, x, y);
+    ctx.textBaseline = 'alphabetic';
+  }
+}
+
+function layerN(layer) {
+  return { top: N_TOP, h1: N_H1, h0: N_H0, vis: N_VIS, soft: N_SOFT }[layer];
+}
+
+// Return a fixed set of (a, b) pairs for drawing connections
+const _pairCache = {};
+function sampledPairs(nF, nT, count) {
+  const key = `${nF}-${nT}-${count}`;
+  if (_pairCache[key]) return _pairCache[key];
+  const pairs = [];
+  // Distribute evenly across both layers
+  for (let i = 0; i < count; i++) {
+    pairs.push([
+      Math.floor(i * nF / count) % nF,
+      Math.floor(i * nT / count) % nT,
+    ]);
+  }
+  _pairCache[key] = pairs;
+  return pairs;
+}
+
+// ─────────────────────────────────────────────────────────────
+//  CURSOR  (crosshair over draw region, pointer over softmax)
+// ─────────────────────────────────────────────────────────────
+mc.addEventListener('mousemove', e => {
+  const rect = mc.getBoundingClientRect();
+  const scaleX = mc.width / rect.width;
+  const scaleY = mc.height / rect.height;
+  const cx = (e.clientX - rect.left) * scaleX;
+  const cy = (e.clientY - rect.top)  * scaleY;
+
+  let newHover = -1;
+  if (cx >= CV.x && cx <= CV.x + CV.w && cy >= CV.y && cy <= CV.y + CV.h) {
+    mc.style.cursor = 'crosshair';
+  } else {
+    for (let d = 0; d < 10; d++) {
+      const { x, y } = unitPos('soft', d);
+      if ((cx-x)*(cx-x)+(cy-y)*(cy-y) <= (SOFT_R+4)*(SOFT_R+4)) { newHover = d; break; }
+    }
+    mc.style.cursor = newHover >= 0 ? 'pointer' : 'default';
+  }
+
+  if (newHover !== hoveredSoft) {
+    hoveredSoft = newHover;
+    render();
+  }
+});
+
+mc.addEventListener('mouseleave', () => {
+  if (hoveredSoft !== -1) { hoveredSoft = -1; render(); }
+});
+
+// ─────────────────────────────────────────────────────────────
+//  DRAWING (mouse/touch → pixel buffer)
+// ─────────────────────────────────────────────────────────────
+let isDrawing = false;
+
+function canvasToGrid(e) {
+  const rect = mc.getBoundingClientRect();
+  const scaleX = mc.width  / rect.width;
+  const scaleY = mc.height / rect.height;
+  const cx = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+  const cy = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+  const cx2 = cx * scaleX, cy2 = cy * scaleY;
+  // Map from canvas pixel coords to 28x28 grid within CV region
+  const gx = (cx2 - CV.x) / CV.w * 28;
+  const gy = (cy2 - CV.y) / CV.h * 28;
+  return [gx, gy];
+}
+
+function isInCanvas(e) {
+  const rect = mc.getBoundingClientRect();
+  const scaleX = mc.width  / rect.width;
+  const scaleY = mc.height / rect.height;
+  const cx = ((e.touches ? e.touches[0].clientX : e.clientX) - rect.left) * scaleX;
+  const cy = ((e.touches ? e.touches[0].clientY : e.clientY) - rect.top)  * scaleY;
+  return cx >= CV.x && cx <= CV.x + CV.w && cy >= CV.y && cy <= CV.y + CV.h;
+}
+
+function isInSoftmax(e) {
+  const rect = mc.getBoundingClientRect();
+  const scaleX = mc.width  / rect.width;
+  const scaleY = mc.height / rect.height;
+  const cx = ((e.touches ? e.touches[0].clientX : e.clientX) - rect.left) * scaleX;
+  const cy = ((e.touches ? e.touches[0].clientY : e.clientY) - rect.top)  * scaleY;
+  for (let d = 0; d < 10; d++) {
+    const { x, y } = unitPos('soft', d);
+    const dx = cx - x, dy = cy - y;
+    if (dx*dx + dy*dy <= (SOFT_R+4)*(SOFT_R+4)) return d;
+  }
+  return -1;
+}
+
+function paintPixel(gx, gy) {
+  // ── STROKE WIDTH ─────────────────────────────────────────
+  // Controlled by BRUSH_RADIUS at the top of the script.
+  // Lower = thinner strokes (more MNIST-like). Default: 1.4
+  const r = BRUSH_RADIUS;
+  // ─────────────────────────────────────────────────────────
+  const ri = Math.ceil(r) + 1;
+  for (let dy = -ri; dy <= ri; dy++) {
+    for (let dx = -ri; dx <= ri; dx++) {
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist > r + 0.5) continue;
+      const nx = Math.floor(gx + dx), ny = Math.floor(gy + dy);
+      if (nx < 0 || nx >= 28 || ny < 0 || ny >= 28) continue;
+      const str = Math.max(0, 1 - dist / (r + 0.5));
+      const idx = ny * 28 + nx;
+      pixels[idx] = Math.min(1, pixels[idx] + str * 0.85);
+    }
+  }
+  updateVisLayer();
+  render();
+}
+
+mc.addEventListener('mousedown', e => {
+  const d = isInSoftmax(e);
+  if (d >= 0) { triggerGen(d); return; }
+  if (isInCanvas(e)) { isDrawing = true; const[x,y]=canvasToGrid(e); paintPixel(x,y); }
+});
+mc.addEventListener('mousemove', e => {
+  if (!isDrawing) return;
+  const[x,y]=canvasToGrid(e); paintPixel(x,y);
+});
+mc.addEventListener('mouseup',    () => isDrawing = false);
+mc.addEventListener('mouseleave', () => isDrawing = false);
+mc.addEventListener('touchstart', e => {
+  e.preventDefault();
+  const d = isInSoftmax(e);
+  if (d >= 0) { triggerGen(d); return; }
+  if (isInCanvas(e)) { isDrawing = true; const[x,y]=canvasToGrid(e); paintPixel(x,y); }
+}, { passive: false });
+mc.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (!isDrawing) return;
+  const[x,y]=canvasToGrid(e); paintPixel(x,y);
+}, { passive: false });
+mc.addEventListener('touchend', () => isDrawing = false);
+
+// ─────────────────────────────────────────────────────────────
+//  VISIBLE LAYER UPDATE (avg-pool pixels → 8 unit activations)
+// ─────────────────────────────────────────────────────────────
+function updateVisLayer() {
+  const n = N_VIS, out = new Float32Array(n), step = 784 / n;
+  for (let i = 0; i < n; i++) {
+    let s = 0, cnt = 0;
+    const a = Math.floor(i * step), b = Math.floor((i+1) * step);
+    for (let j = a; j < b && j < 784; j++) { s += pixels[j]; cnt++; }
+    out[i] = cnt ? s / cnt : 0;
+  }
+  layerActs.vis = out;
+}
+
+// ─────────────────────────────────────────────────────────────
+//  SAMPLING HELPERS
+// ─────────────────────────────────────────────────────────────
+function sampleN(arr, n) {
+  if (!arr) return null;
+  const out = new Float32Array(n), step = arr.length / n;
+  for (let i = 0; i < n; i++) out[i] = arr[Math.floor(i * step)];
+  return out;
+}
+
+// ─────────────────────────────────────────────────────────────
+//  EDGE PULSE ANIMATION
+// ─────────────────────────────────────────────────────────────
+async function pulseEdge(mode, fromLayer, toLayer, dur=260) {
+  edgeSt = { on: true, fromLayer, toLayer, mode, t: 0 };
+  return new Promise(resolve => {
+    const T0 = performance.now();
+    function f(now) {
+      const p = Math.min(1, (now - T0) / dur);
+      edgeSt.t = p < 0.5 ? p * 2 : (1 - p) * 2;
+      render();
+      if (p < 1) requestAnimationFrame(f);
+      else { edgeSt.on = false; edgeSt.t = 0; resolve(); }
+    }
+    requestAnimationFrame(f);
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
+//  STATUS
+// ─────────────────────────────────────────────────────────────
+function setSt(state, msg) {
+  panelSt.state = state;
+  panelSt.msg   = msg;
+  render();
+}
+
+function showResult(digit, conf, type) {
+  panelSt.digit = digit;
+  panelSt.conf  = conf;
+  panelSt.type  = type;
+  render();
+}
+
+// ─────────────────────────────────────────────────────────────
+//  SOFTMAX DISPLAY
+// ─────────────────────────────────────────────────────────────
+function updateSoftmax(probs) {
+  softProbs = probs;
+  render();
+}
+function setActive(d) {
+  activeDigit = d;
+}
+function resetSoftmax() {
+  updateSoftmax(new Float32Array(10).fill(0.1));
+  setActive(-1);
+}
+
+// ─────────────────────────────────────────────────────────────
+//  BINARY WEIGHT LOADER
+// ─────────────────────────────────────────────────────────────
+let W = null;
+
+async function loadWeights() {
+  const msg = document.getElementById('lmsg');
+  try {
+    const resp = await fetch('dbn_weights.bin');
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    msg.textContent = 'parsing…';
+    const buf = await resp.arrayBuffer();
+    const hlen = new DataView(buf).getUint32(0, true);
+    const hbytes = new Uint8Array(buf, 4, hlen);
+    const header = JSON.parse(new TextDecoder().decode(hbytes).replace(/\0/g,''));
+    const dataStart = 4 + hlen;
+    const parsed = {};
+    for (const e of header) {
+      // .slice() into fresh buffer — avoids Float32Array alignment error
+      const copied = buf.slice(dataStart + e.offset, dataStart + e.offset + e.length * 4);
+      const fa = new Float32Array(copied);
+      if (e.shape.length === 2) {
+        const [R, C] = e.shape;
+        const rows = [];
+        for (let r = 0; r < R; r++) rows.push(fa.subarray(r*C, (r+1)*C));
+        parsed[e.name] = rows;
+      } else {
+        parsed[e.name] = fa;
+      }
+    }
+    const nL = header.filter(e => e.name.startsWith('rec_W_')).length;
+    W = {
+      numLayers: nL,
+      rec_W:  Array.from({length:nL}, (_,i) => parsed[`rec_W_${i}`]),
+      rec_bs: Array.from({length:nL}, (_,i) => parsed[`rec_bs_${i}`]),
+      gen_W:  Array.from({length:nL}, (_,i) => parsed[`gen_W_${i}`]),
+      gen_bs: Array.from({length:nL}, (_,i) => parsed[`gen_bs_${i}`]),
+      top_W: parsed['top_W'], top_b: parsed['top_b'], top_c: parsed['top_c'],
+    };
+    const ov = document.getElementById('overlay');
+    ov.style.opacity = '0';
+    setTimeout(() => ov.style.display = 'none', 400);
+    setSt('done', 'ready — draw or click a softmax unit');
+    render();
+  } catch(e) {
+    document.getElementById('lmsg').innerHTML =
+      `<span style="color:#fb7185">${e.message}</span><br>place dbn_weights.bin beside index.html`;
+    setTimeout(() => {
+      const ov = document.getElementById('overlay');
+      ov.style.opacity = '0'; setTimeout(() => ov.style.display='none', 400);
+    }, 5000);
+    setSt('err', e.message);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  MATH
+// ─────────────────────────────────────────────────────────────
+function sig(x) { return x>=0 ? 1/(1+Math.exp(-x)) : Math.exp(x)/(1+Math.exp(x)); }
+
+function matVec(M, v, bias) {
+  const R=M.length, out=new Float32Array(R);
+  for (let r=0; r<R; r++) {
+    let s = bias ? bias[r] : 0;
+    const row=M[r];
+    for (let c=0; c<row.length; c++) s += row[c]*v[c];
+    out[r] = sig(s);
+  }
+  return out;
+}
+
+function matVecRaw(M, v, bias) {
+  const C=M[0].length, out=new Float32Array(C);
+  for (let r=0; r<M.length; r++) {
+    const vr=v[r], row=M[r];
+    for (let c=0; c<C; c++) out[c] += row[c]*vr;
+  }
+  if (bias) for (let c=0; c<C; c++) out[c] += bias[c];
+  return out;
+}
+
+function softmaxRange(arr, s, e2) {
+  let max=arr[s];
+  for (let i=s+1;i<e2;i++) if(arr[i]>max) max=arr[i];
+  const out=new Float32Array(e2-s); let sum=0;
+  for (let i=s;i<e2;i++){out[i-s]=Math.exp(arr[i]-max);sum+=out[i-s];}
+  for (let i=0;i<out.length;i++) out[i]/=sum;
+  return out;
+}
+
+function bernSample(p){
+  const out=new Float32Array(p.length);
+  for(let i=0;i<p.length;i++) out[i]=Math.random()<p[i]?1:0;
+  return out;
+}
+function catSample(p){
+  let r=Math.random(),s=0;
+  for(let i=0;i<p.length;i++){s+=p[i];if(r<s)return i;}
+  return p.length-1;
+}
+
+function recPass(v784) {
+  const acts=[v784]; let v=v784;
+  for(let i=0;i<W.numLayers;i++){ v=matVec(W.rec_W[i],v,W.rec_bs[i]); acts.push(v); }
+  return acts;
+}
+function topProbH(v510){ return matVec(W.top_W,v510,W.top_c); }
+function topProbV(h2000){
+  const raw=matVecRaw(W.top_W,h2000,W.top_b);
+  const pb=new Float32Array(500);
+  for(let i=0;i<500;i++) pb[i]=sig(raw[i]);
+  return { bern:pb, soft:softmaxRange(raw,500,510) };
+}
+function genPass(h500){
+  const acts=[h500]; let h=h500;
+  for(let i=W.numLayers-1;i>=0;i--){
+    const C=W.gen_W[i][0].length, out=new Float32Array(C);
+    for(let r=0;r<W.gen_W[i].length;r++){
+      const vr=h[r],row=W.gen_W[i][r];
+      for(let c=0;c<C;c++) out[c]+=row[c]*vr;
+    }
+    for(let c=0;c<C;c++) out[c]=sig(out[c]+W.gen_bs[i][c]);
+    acts.unshift(out); h=out;
+  }
+  return acts;
+}
+
+// ─────────────────────────────────────────────────────────────
+//  CLASSIFY
+// ─────────────────────────────────────────────────────────────
+let busy = false;
+
+async function runClassify() {
+  if(!W){setSt('err','weights not loaded');return;}
+  if(busy) return;
+  busy=true; setActive(-1); resetSoftmax();
+  const k=parseInt(document.getElementById('kcls').value)||50;
+  setSt('running','recognition pass ↑…');
+
+  const recActs=recPass(pixels);
+
+  // Light up vis→h0→h1
+  layerActs.vis=sampleN(recActs[0],N_VIS);
+  await pulseEdge('rec','vis','h0');
+  layerActs.h0=sampleN(recActs[1],N_H0);
+  await sleep(80);
+  await pulseEdge('rec','h0','h1');
+  layerActs.h1=sampleN(recActs[2],N_H1);
+  await sleep(80);
+  await pulseEdge('rec','h1','top');
+  edgeSt.on=false; render();
+
+  // Gibbs on top RBM
+  setSt('running',`gibbs k=${k}…`);
+  const h500=recActs[recActs.length-1];
+  let v_bern=new Float32Array(h500);
+  let p_soft=new Float32Array(10).fill(0.1);
+  let v_soft=new Float32Array(10); v_soft[catSample(p_soft)]=1;
+  const BATCH=8, RPT=Math.max(1,k/25|0);
+
+  await new Promise(resolve=>{
+    let step=0;
+    function tick(){
+      for(let b=0;b<BATCH&&step<k;b++,step++){
+        const v510=new Float32Array(510);
+        v510.set(v_bern); v510.set(v_soft,500);
+        const ph=topProbH(v510),hs=bernSample(ph),pv=topProbV(hs);
+        p_soft=pv.soft;
+        v_soft=new Float32Array(10); v_soft[catSample(p_soft)]=1;
+        if(step%RPT===0){
+          updateSoftmax(p_soft);
+          layerActs.top=sampleN(ph,N_TOP);
+          render();
+          setSt('running',`gibbs ${step+1}/${k}`);
+        }
+      }
+      if(step<k) requestAnimationFrame(tick); else resolve();
+    }
+    tick();
+  });
+
+  updateSoftmax(p_soft);
+  const pred=Array.from(p_soft).indexOf(Math.max(...p_soft));
+  showResult(pred, p_soft[pred], 'classify');
+  setSt('done',`prediction: ${pred}  (${(p_soft[pred]*100).toFixed(1)}%)`);
+  busy=false;
+}
+
+// ─────────────────────────────────────────────────────────────
+//  GENERATE
+// ─────────────────────────────────────────────────────────────
+async function triggerGen(digit) {
+  if(!W){setSt('err','weights not loaded');return;}
+  if(busy) return;
+  busy=true; setActive(digit);
+  const k=parseInt(document.getElementById('kgen').value)||1000;
+
+  // Noise on canvas
+  for(let i=0;i<784;i++) pixels[i]=Math.random()*.3;
+  updateVisLayer(); render();
+  await sleep(300);
+
+  const p_init=new Float32Array(10); p_init[digit]=1;
+  updateSoftmax(p_init);
+  setSt('running',`generating ${digit} — gibbs k=${k}…`);
+
+  const v_soft=new Float32Array(10); v_soft[digit]=1;
+  let v_bern=bernSample(new Float32Array(500).fill(.5));
+  let p_bern_fin=new Float32Array(500).fill(.5);
+  const BATCH=20, RPT=Math.max(1,k/30|0);
+
+  await new Promise(resolve=>{
+    let step=0;
+    function tick(){
+      for(let b=0;b<BATCH&&step<k;b++,step++){
+        const v510=new Float32Array(510);
+        v510.set(v_bern); v510.set(v_soft,500);
+        const ph=topProbH(v510),hs=bernSample(ph),pv=topProbV(hs);
+        p_bern_fin=pv.bern; v_bern=bernSample(p_bern_fin);
+        if(step%RPT===0){
+          layerActs.top=sampleN(ph,N_TOP);
+          layerActs.h1=sampleN(p_bern_fin,N_H1);
+          render();
+          setSt('running',`gibbs ${step+1}/${k}`);
+        }
+      }
+      if(step<k) requestAnimationFrame(tick); else resolve();
+    }
+    tick();
+  });
+
+  // Generative pass down
+  setSt('running','generative pass ↓…');
+  const downActs=genPass(p_bern_fin);
+  await pulseEdge('gen','top','h1');
+  layerActs.h1=sampleN(downActs[2],N_H1);
+  await sleep(80);
+  await pulseEdge('gen','h1','h0');
+  layerActs.h0=sampleN(downActs[1],N_H0);
+  await sleep(80);
+  await pulseEdge('gen','h0','vis');
+  layerActs.vis=sampleN(downActs[0],N_VIS);
+
+  const gen=downActs[0];
+  for(let i=0;i<784;i++) pixels[i]=gen[i];
+  updateVisLayer(); edgeSt.on=false;
+  render();
+  showResult(digit, 1, 'generate');
+  setSt('done',`generated ${digit} — clear to draw`);
+  busy=false;
+}
+
+// ─────────────────────────────────────────────────────────────
+//  UTILS
+// ─────────────────────────────────────────────────────────────
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+function clearAll(){
+  if(busy) return;
+  pixels.fill(0);
+  layerActs={top:null,h1:null,h0:null,vis:null};
+  panelSt = { state: '', msg: 'ready — draw or click a softmax unit', digit: null, conf: null, type: null };
+  resetSoftmax(); edgeSt.on=false; render();
+  setSt('','cleared');
+}
+
+window.addEventListener('load', () => {
+  layout();
+  render();
+  loadWeights();
+});
+
+let _resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(_resizeTimer);
+  _resizeTimer = setTimeout(() => { layout(); render(); }, 120);
+});
+</script>
+</body>
+</html>
