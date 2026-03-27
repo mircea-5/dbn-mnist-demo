@@ -136,13 +136,88 @@ header h1 { font-size: clamp(1.3rem, 5vw, 2rem); }
   font-size: .68rem; color: var(--text); margin-bottom: 0; line-height: 1.55;
 }
 
-@media (max-width: 540px) {
-  body { padding: 1em; }
-  .below-canvas-row { flex-direction: column; }
-  .classify-col { width: auto !important; flex-shrink: unset !important; }
-  .info-grid { grid-template-columns: 1fr; }
-  .project-info { max-width: 100%; }
-  .arch-diagram { flex-direction: column; align-items: flex-start; gap: 4px; }
+@media (max-width: 768px) {
+  body { padding: 1em 0.75em; }
+  header { margin-bottom: 1em; }
+  header h1 { font-size: 1.5rem; }
+  header .subtitle { font-size: .72rem; line-height: 1.6; }
+  
+  /* Make app container full width */
+  .app { width: 100%; }
+  .main-canvas-wrap { 
+    padding: 0.75rem; 
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Stack controls vertically on mobile */
+  .below-canvas-row { 
+    flex-direction: column; 
+    gap: 12px;
+  }
+  .classify-col, .generate-col { 
+    width: 100% !important; 
+    min-width: unset !important;
+    flex-shrink: unset !important; 
+  }
+  
+  /* Larger touch targets */
+  .btn {
+    padding: 12px 16px;
+    font-size: 0.85rem;
+    min-height: 44px; /* iOS recommended touch target */
+  }
+  .btn-row { gap: 12px; }
+  
+  .k-row {
+    margin-top: 10px;
+    gap: 10px;
+  }
+  .k-row span { font-size: .72rem; }
+  .k-row input {
+    width: 80px;
+    padding: 8px 10px;
+    font-size: .75rem;
+    min-height: 40px;
+  }
+  
+  /* Card spacing */
+  .card { padding: 14px 16px; }
+  .clabel { 
+    font-size: .62rem; 
+    margin-bottom: 10px; 
+  }
+  
+  /* Project info */
+  .info-grid { 
+    grid-template-columns: 1fr; 
+    gap: 12px; 
+  }
+  .project-info { 
+    max-width: 100%; 
+    padding: 1.5rem 0.75rem 2rem;
+    margin-top: 2rem;
+  }
+  .project-info h2 { font-size: 1rem; }
+  .project-info p { font-size: .75rem; }
+  .arch-diagram { 
+    flex-direction: column; 
+    align-items: flex-start; 
+    gap: 6px; 
+  }
+  .info-card { padding: 14px; }
+  .info-card p { font-size: .72rem; }
+}
+
+/* Extra small screens */
+@media (max-width: 400px) {
+  body { padding: 0.75em 0.5em; }
+  header h1 { font-size: 1.3rem; }
+  header .subtitle { font-size: .68rem; }
+  .main-canvas-wrap { padding: 0.5rem; }
+  .card { padding: 12px; }
+  .btn { padding: 10px 12px; font-size: 0.8rem; }
 }
 </style>
 </head>
@@ -157,7 +232,7 @@ header h1 { font-size: clamp(1.3rem, 5vw, 2rem); }
 
 <header>
   <h1>Deep Belief Network</h1>
-  <p class="subtitle">Draw a digit to classify · click a softmax unit to generate · watch the network activate</p>
+  <p class="subtitle">Draw a digit to classify · tap a softmax unit to generate · watch the network activate</p>
 </header>
 
 <div class="app">
@@ -181,7 +256,7 @@ header h1 { font-size: clamp(1.3rem, 5vw, 2rem); }
         <div class="card">
           <span class="clabel">generate</span>
           <div class="k-row"><span>gibbs k</span><input type="number" id="kgen" value="1000" min="1" max="5000"></div>
-          <p style="font-size:.58rem;color:var(--muted);margin-top:7px;font-family:var(--mono)">click a softmax unit on canvas</p>
+          <p style="font-size:.58rem;color:var(--muted);margin-top:7px;font-family:var(--mono)">tap a softmax unit on canvas</p>
         </div>
       </div>
     </div>
@@ -279,13 +354,20 @@ const mctx = mc.getContext('2d');
 function layout() {
   // ── RESPONSIVE SIZING ───────────────────────────────────────
   // Find the largest UNIT_R that fits available viewport width
-  const availW = Math.min(window.innerWidth - 48, 900);
+  // Mobile gets more aggressive scaling
+  const isMobile = window.innerWidth <= 768;
+  const padding = isMobile ? 24 : 48;
+  const availW = Math.min(window.innerWidth - padding, 900);
+  
   UNIT_R = 12;
-  for (let r = 12; r >= 6; r--) {
+  const minR = isMobile ? 4 : 6; // Allow smaller units on mobile
+  
+  for (let r = 12; r >= minR; r--) {
     const s  = r * 2 + GAP;
     const sr = Math.round(r * 1.35);
     const ss = sr * 2 + 8;
-    const cw = (r + 4) + (N_TOP * s - GAP) + 48 + (N_SOFT * ss - 8) + sr + 4;
+    const softGap = isMobile ? 24 : 48; // Tighter on mobile
+    const cw = (r + 4) + (N_TOP * s - GAP) + softGap + (N_SOFT * ss - 8) + sr + 4;
     if (cw <= availW) { UNIT_R = r; break; }
   }
   STEP      = UNIT_R * 2 + GAP;
@@ -300,7 +382,7 @@ function layout() {
 
   X_LEFT = UNIT_R + 4;
 
-  const SOFT_GAP = 48;
+  const SOFT_GAP = isMobile ? 24 : 48;
   const topRowW  = N_TOP * STEP - GAP;
   const softRowW = N_SOFT * SOFT_STEP - 8;
   CW = X_LEFT + topRowW + SOFT_GAP + softRowW + SOFT_R + 4;
@@ -310,7 +392,7 @@ function layout() {
   // Vertical layout — enough top padding for the "top (2000)" label above the first row
   const TOP_PAD = UNIT_R + 28;
   ROW_TOP = TOP_PAD;
-  const ROW_GAP = 20;
+  const ROW_GAP = isMobile ? 16 : 20; // Tighter rows on mobile
   ROW_H1  = ROW_TOP + STEP + ROW_GAP;
   ROW_H0  = ROW_H1  + STEP + ROW_GAP;
   ROW_VIS = ROW_H0  + STEP + ROW_GAP;
@@ -326,7 +408,7 @@ function layout() {
   // Align classify column under the NN section (left of softmax)
   const classifyColEl = document.getElementById('classify-col');
   if (classifyColEl) {
-    if (window.innerWidth > 540) {
+    if (window.innerWidth > 768) {
       classifyColEl.style.width = X_SOFT + 'px';
       classifyColEl.style.flexShrink = '0';
     } else {
