@@ -40,7 +40,7 @@ header h1 { font-size: clamp(1.3rem, 5vw, 2rem); }
 
 /* Main canvas wrapper */
 .main-canvas-wrap { padding: 1rem 1rem 0 1rem; overflow-x: auto; }
-#main-canvas { display: block; touch-action: pan-x; } /* Allow horizontal pan, prevent vertical */
+#main-canvas { display: block; touch-action: pan-x pan-y; } /* Allow both horizontal and vertical pan */
 
 /* Below-canvas two-column row */
 .below-canvas-row { display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
@@ -148,7 +148,7 @@ header h1 { font-size: clamp(1.3rem, 5vw, 2rem); }
     padding: 0.75rem 0.5rem; 
     width: 100%;
     overflow-x: auto;
-    overflow-y: hidden;
+    overflow-y: auto; /* Allow vertical scrolling on mobile */
     -webkit-overflow-scrolling: touch; /* Smooth momentum scrolling on iOS */
   }
   
@@ -506,7 +506,8 @@ function drawStatusPanel(ctx) {
                  : panelSt.state === 'done'    ? '#16a34a'
                  : panelSt.state === 'err'     ? '#ef4444'
                  : '#9090b0';
-  const msgFont = isSmallMobile ? 7 : Math.max(8, Math.min(11, UNIT_R - 1));
+  // Match layer label font size
+  const msgFont = isMobile ? Math.max(9, Math.min(13, UNIT_R + 1)) : Math.max(8, Math.min(11, UNIT_R - 1));
 
   // ── STATUS ROW (always shown, pinned to bottom) ───────
   ctx.font = `400 ${msgFont}px "JetBrains Mono", monospace`;
@@ -538,7 +539,8 @@ function drawStatusPanel(ctx) {
     ctx.lineTo(rx + rw - (isSmallMobile ? 6 : 10), ry + resultH);
     ctx.stroke();
 
-    const typeFont = isSmallMobile ? 6 : Math.max(7, Math.min(10, UNIT_R - 1));
+    // Match layer label font size for type label
+    const typeFont = isMobile ? Math.max(9, Math.min(13, UNIT_R + 1)) : Math.max(7, Math.min(10, UNIT_R - 1));
     ctx.fillStyle = '#9090b0';
     ctx.font = `400 ${typeFont}px "JetBrains Mono", monospace`;
     ctx.textAlign = 'center';
@@ -552,7 +554,8 @@ function drawStatusPanel(ctx) {
     ctx.fillText(panelSt.digit, cx, ry + resultH * 0.52);
 
     if (panelSt.type === 'classify' && panelSt.conf !== null) {
-      const confSz = isSmallMobile ? 8 : Math.max(9, Math.min(14, UNIT_R));
+      // Larger confidence % on mobile
+      const confSz = isMobile ? Math.max(10, Math.min(15, UNIT_R + 2)) : Math.max(9, Math.min(14, UNIT_R));
       ctx.fillStyle = '#16a34a';
       ctx.font = `600 ${confSz}px "JetBrains Mono", monospace`;
       ctx.textBaseline = 'bottom';
