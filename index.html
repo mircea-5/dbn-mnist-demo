@@ -233,7 +233,7 @@ header h1 { font-size: clamp(1.3rem, 5vw, 2rem); }
 
 <header>
   <h1>Deep Belief Network</h1>
-  <p class="subtitle">Draw a digit to classify · tap a softmax unit to generate · watch the network activate</p>
+  <p class="subtitle">Draw a digit to classify · tap 0–9 to generate · watch the network activate</p>
 </header>
 
 <div class="app">
@@ -257,7 +257,7 @@ header h1 { font-size: clamp(1.3rem, 5vw, 2rem); }
         <div class="card">
           <span class="clabel">generate</span>
           <div class="k-row"><span>gibbs k</span><input type="number" id="kgen" value="1000" min="1" max="5000"></div>
-          <p style="font-size:.58rem;color:var(--muted);margin-top:7px;font-family:var(--mono)">tap a softmax unit on canvas</p>
+          <p style="font-size:.58rem;color:var(--muted);margin-top:7px;font-family:var(--mono)">tap a digit (0–9) above to generate</p>
         </div>
       </div>
     </div>
@@ -294,7 +294,7 @@ header h1 { font-size: clamp(1.3rem, 5vw, 2rem); }
     </div>
     <div class="info-card">
       <span class="ic-label">How to use</span>
-      <p>Draw a digit (0–9) in the canvas, then press <strong>Run ↑</strong> to classify it. To generate a digit, click any of the <strong>softmax units</strong> on the right side of the canvas — the network will hallucinate a matching digit.</p>
+      <p>Draw a digit (0–9) <strong>centered</strong> in the canvas (follow the guide circle), then press <strong>Run ↑</strong> to classify it. To generate a digit, tap any of the <strong>numbered circles (0–9)</strong> on the right — the network will hallucinate a matching digit.</p>
     </div>
     <div class="info-card">
       <span class="ic-label">Recognition pass ↑</span>
@@ -611,6 +611,35 @@ function render() {
   // White background for drawing pad
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(CV.x, CV.y, CV.w, CV.h);
+  
+  // Check if canvas is empty
+  const isEmpty = pixels.every(v => v < 0.01);
+  
+  if (isEmpty) {
+    // Draw guide circle (70% of canvas size, centered)
+    const guideRadius = CV.w * 0.35;
+    const centerX = CV.x + CV.w / 2;
+    const centerY = CV.y + CV.h / 2;
+    
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, guideRadius, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(0,0,0,0.08)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 4]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+    
+    // Placeholder text
+    const placeholderFont = Math.max(10, Math.min(14, UNIT_R + 2));
+    ctx.font = `400 ${placeholderFont}px "JetBrains Mono", monospace`;
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('✏️ Draw a digit (0–9)', centerX, centerY);
+  }
+  
   // Render the pixel buffer into the canvas rect
   const iw = CV.w / 28, ih = CV.h / 28;
   for (let py = 0; py < 28; py++) {
@@ -621,9 +650,9 @@ function render() {
       ctx.fillRect(CV.x + px * iw, CV.y + py * ih, iw + 0.5, ih + 0.5);
     }
   }
-  // Canvas border
-  ctx.strokeStyle = 'rgba(0,0,0,0.12)';
-  ctx.lineWidth = 1;
+  // Canvas border - slightly more prominent
+  ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+  ctx.lineWidth = 1.5;
   ctx.strokeRect(CV.x, CV.y, CV.w, CV.h);
 
   // ── UNIT CIRCLES ────────────────────────────────────────
@@ -658,6 +687,17 @@ function render() {
 
   // Softmax label: centered over softmax row
   ctx.fillText('softmax (10)', X_SOFT + (N_SOFT * SOFT_STEP - 8) / 2, ROW_H1 - SOFT_R - Math.round(SOFT_R * 0.3) - 6);
+  
+  // Add hint text below softmax units (especially helpful on mobile)
+  const isMobile = window.innerWidth <= 768;
+  if (isMobile) {
+    const hintFont = Math.max(8, Math.min(11, UNIT_R));
+    ctx.font = `400 ${hintFont}px "JetBrains Mono", monospace`;
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.textAlign = 'center';
+    ctx.fillText('← tap to generate', X_SOFT + (N_SOFT * SOFT_STEP - 8) / 2, ROW_H1 + SOFT_R + Math.round(SOFT_R * 0.5) + 8);
+  }
+  
   ctx.textBaseline = 'alphabetic';
 }
 
