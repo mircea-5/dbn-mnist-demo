@@ -40,7 +40,7 @@ header h1 { font-size: clamp(1.3rem, 5vw, 2rem); }
 
 /* Main canvas wrapper */
 .main-canvas-wrap { padding: 1rem 1rem 0 1rem; overflow-x: auto; }
-#main-canvas { display: block; touch-action: none;}
+#main-canvas { display: block; touch-action: pan-x; } /* Allow horizontal pan, prevent vertical */
 
 /* Below-canvas two-column row */
 .below-canvas-row { display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
@@ -145,10 +145,11 @@ header h1 { font-size: clamp(1.3rem, 5vw, 2rem); }
   /* Make app container full width */
   .app { width: 100%; }
   .main-canvas-wrap { 
-    padding: 0.75rem; 
+    padding: 0.75rem 0.5rem; 
     width: 100%;
     overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch; /* Smooth momentum scrolling on iOS */
   }
   
   /* Stack controls vertically on mobile */
@@ -215,7 +216,7 @@ header h1 { font-size: clamp(1.3rem, 5vw, 2rem); }
   body { padding: 0.75em 0.5em; }
   header h1 { font-size: 1.3rem; }
   header .subtitle { font-size: .68rem; }
-  .main-canvas-wrap { padding: 0.5rem; }
+  .main-canvas-wrap { padding: 0.5rem 0.25rem; }
   .card { padding: 12px; }
   .btn { padding: 10px 12px; font-size: 0.8rem; }
 }
@@ -878,14 +879,23 @@ mc.addEventListener('mousemove', e => {
 mc.addEventListener('mouseup',    () => isDrawing = false);
 mc.addEventListener('mouseleave', () => isDrawing = false);
 mc.addEventListener('touchstart', e => {
-  e.preventDefault();
   const d = isInSoftmax(e);
-  if (d >= 0) { triggerGen(d); return; }
-  if (isInCanvas(e)) { isDrawing = true; const[x,y]=canvasToGrid(e); paintPixel(x,y); }
+  if (d >= 0) { 
+    e.preventDefault(); // Prevent scroll only when tapping softmax
+    triggerGen(d); 
+    return; 
+  }
+  if (isInCanvas(e)) { 
+    e.preventDefault(); // Prevent scroll only when drawing
+    isDrawing = true; 
+    const[x,y]=canvasToGrid(e); 
+    paintPixel(x,y); 
+  }
+  // If touching network visualization area, allow default scroll behavior
 }, { passive: false });
 mc.addEventListener('touchmove', e => {
-  e.preventDefault();
-  if (!isDrawing) return;
+  if (!isDrawing) return; // Allow scroll if not drawing
+  e.preventDefault(); // Prevent scroll only while actively drawing
   const[x,y]=canvasToGrid(e); paintPixel(x,y);
 }, { passive: false });
 mc.addEventListener('touchend', () => isDrawing = false);
