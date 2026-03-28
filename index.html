@@ -268,43 +268,54 @@ header h1 { font-size: clamp(1.3rem, 5vw, 2rem); }
 <!-- Project info section -->
 <section class="project-info">
   <h2>About this project</h2>
-  <h6>Author: Yerbol Kuttybay</h6>
+  <p style="font-size:.66rem;color:var(--text);font-family:var(--mono);margin-bottom:0.3rem;"><strong>Author:</strong> Yerbol Kuttubay &nbsp; | &nbsp; <strong>Designer:</strong> Yerdaulet Zhumay</p>
+  
   <p>
-    This is an interactive demo of a <strong>Deep Belief Network (DBN)</strong> trained on the MNIST handwritten-digit dataset.
-    A DBN is a generative probabilistic model built by stacking multiple Restricted Boltzmann Machines (RBMs).
-    It learns to both <em>recognize</em> patterns (bottom-up) and <em>generate</em> plausible examples (top-down).
+    This is an interactive demo of a Deep Belief Network (DBN) trained on the MNIST handwritten-digit dataset. 
+    A DBN is a stack of Restricted Boltzmann Machines (RBMs) trained layer-by-layer using unsupervised pretraining, then fine-tuned for classification. 
+    It is a generative model—it models a probability distribution P(image). In this case, it learned the joint distribution P(image, label). 
+    The cool thing is that we can sample from its conditional distributions: P(image|label) for generation and P(label|image) for classification. 
+    Hence, one model handles both tasks.
   </p>
 
-  <div class="arch-diagram">
-    <span class="layer-box">Input (784)</span>
-    <span class="arrow">→</span>
-    <span class="layer-box">RBM 0 · Hidden (500)</span>
-    <span class="arrow">→</span>
-    <span class="layer-box">RBM 1 · Hidden (500)</span>
-    <span class="arrow">→</span>
-    <span class="layer-box">Top RBM (2000)</span>
-    <span class="arrow">+</span>
-    <span class="layer-box">Softmax (10)</span>
+  <p>
+    To get samples from the network, we wait some number of steps before it "mixes." This is the Gibbs k parameter. 
+    More steps yield less biased samples. In practice, the default parameters are fine.
+  </p>
+
+  <p>
+    The network has limitations. Specifically for images, its architecture lacks translation invariance (unlike CNNs, for example). 
+    In the demo, you can notice it struggles to classify 6 and 9. On our validation set, the DBN achieved 95% accuracy. 
+    In practice and in this demo, we suspect it is lower.
+  </p>
+
+  <p>
+    During inspection, we noticed beautiful patterns in the first hidden layer's weights. If we plot the weights connecting each pixel to a specific hidden unit, 
+    we get receptive fields—features the network detects. For example, H1 detects right-bottom curves and lights up for digits 3, 5, 8, 9. 
+    We display receptive fields for 100 of the 500 units in the first hidden layer.
+  </p>
+
+  <!-- Receptive fields image -->
+  <div style="margin: 1.5rem 0; text-align: center;">
+    <img src="receptive_fields.jpg" alt="Receptive fields of the first hidden layer" style="max-width: 100%; height: auto; border: 1px solid var(--brd); border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.08);">
+    <p style="font-size:.62rem;color:var(--muted);font-family:var(--mono);margin-top:0.5rem;">
+      Receptive fields of 100 units in the first hidden layer (500 total)
+    </p>
   </div>
 
-  <div class="info-grid">
-    <div class="info-card">
-      <span class="ic-label">Training</span>
-      <p>Greedy layer-wise pre-training on 60 000 MNIST samples. Each RBM is trained with Contrastive Divergence (CD-1), then the top layer jointly models the hidden representation and class label via a softmax unit.</p>
-    </div>
-    <div class="info-card">
-      <span class="ic-label">How to use</span>
-      <p>Draw a digit (0–9) <strong>centered</strong> in the canvas (follow the guide circle), then press <strong>Run ↑</strong> to classify it. To generate a digit, tap any of the <strong>numbered circles (0–9)</strong> on the right — the network will hallucinate a matching digit.</p>
-    </div>
-    <div class="info-card">
-      <span class="ic-label">Recognition pass ↑</span>
-      <p>Pixel activations propagate upward through two hidden layers into the top RBM. Connections light up in <span style="color:#38bdf8;font-weight:600">cyan</span>. Gibbs sampling refines the top-layer state and drives the softmax prediction.</p>
-    </div>
-    <div class="info-card">
-      <span class="ic-label">Generative pass ↓</span>
-      <p>After Gibbs sampling on the top RBM, the network reconstructs pixels by propagating activations downward. Connections light up in <span style="color:#fb7185;font-weight:600">pink</span>. The result is rendered into the drawing pad.</p>
-    </div>
-  </div>
+  <p>
+    The network architecture is from [1]. For training, Hinton's guide [2] was invaluable.
+  </p>
+
+  <p style="font-size:.68rem;line-height:1.6;">
+    <strong>[1]</strong> Hinton, G. E., Osindero, S., & Teh, Y.-W. (2006). A Fast Learning Algorithm for Deep Belief Nets. <em>Neural Computation</em>, 18(7), 1527–1554. 
+    <a href="https://doi.org/10.1162/neco.2006.18.7.1527" style="color:#38bdf8;text-decoration:none;">https://doi.org/10.1162/neco.2006.18.7.1527</a>
+  </p>
+
+  <p style="font-size:.68rem;line-height:1.6;">
+    <strong>[2]</strong> Hinton, G. E. (2012). A practical guide to training restricted Boltzmann machines. In <em>Neural networks: Tricks of the trade</em> (pp. 599–619). Springer Berlin Heidelberg. 
+    <a href="https://doi.org/10.1007/978-3-642-35289-8_32" style="color:#38bdf8;text-decoration:none;">https://doi.org/10.1007/978-3-642-35289-8_32</a>
+  </p>
 </section>
 
 <script>
