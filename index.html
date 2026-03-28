@@ -1153,6 +1153,89 @@ function genPass(h500){
 }
 
 // ─────────────────────────────────────────────────────────────
+//  PREPROCESSING (MNIST-style centering)
+// ─────────────────────────────────────────────────────────────
+function preprocessToMNIST(rawPixels) {
+  // Convert 1D array to 2D for easier processing
+  const img2D = [];
+  for (let y = 0; y < 28; y++) {
+    img2D[y] = rawPixels.slice(y * 28, (y + 1) * 28);
+  }
+  
+  // Find bounding box of non-zero pixels
+  let minX = 28, minY = 28, maxX = -1, maxY = -1;
+  for (let y = 0; y < 28; y++) {
+    for (let x = 0; x < 28; x++) {
+      if (img2D[y][x] > 0.05) { // Small threshold to ignore noise
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
+      }
+    }
+  }
+  
+  // If no content, return zeros
+  if (maxX === -1) return new Float32Array(784);
+  
+  // Add small padding
+  const padding = 1;
+  minX = Math.max(0, minX - padding);
+  minY = Math.max(0, minY - padding);
+  maxX = Math.min(27, maxX + padding);
+  maxY = Math.min(27, maxY + padding);
+  
+  const cropW = maxX - minX + 1;
+  const cropH = maxY - minY + 1;
+  
+  // Calculate new dimensions to fit in ~20×20 while preserving aspect ratio
+  const aspect = cropW / cropH;
+  let newW, newH;
+  if (aspect > 1) {
+    newW = 20;
+    newH = Math.max(1, Math.round(20 / aspect));
+  } else {
+    newH = 20;
+    newW = Math.max(1, Math.round(20 * aspect));
+  }
+  
+  // Create output 28×28 array
+  const output = new Float32Array(784);
+  
+  // Calculate centering offset
+  const xOffset = Math.floor((28 - newW) / 2);
+  const yOffset = Math.floor((28 - newH) / 2);
+  
+  // Resize and center using bilinear interpolation
+  for (let y = 0; y < newH; y++) {
+    for (let x = 0; x < newW; x++) {
+      // Map back to cropped coordinates
+      const srcX = minX + (x / newW) * cropW;
+      const srcY = minY + (y / newH) * cropH;
+      
+      // Bilinear interpolation
+      const x1 = Math.floor(srcX);
+      const x2 = Math.min(27, Math.ceil(srcX));
+      const y1 = Math.floor(srcY);
+      const y2 = Math.min(27, Math.ceil(srcY));
+      
+      const fx = srcX - x1;
+      const fy = srcY - y1;
+      
+      const v1 = img2D[y1][x1] * (1 - fx) + img2D[y1][x2] * fx;
+      const v2 = img2D[y2][x1] * (1 - fx) + img2D[y2][x2] * fx;
+      const value = v1 * (1 - fy) + v2 * fy;
+      
+      // Place in centered position
+      const outIdx = (yOffset + y) * 28 + (xOffset + x);
+      output[outIdx] = value;
+    }
+  }
+  
+  return output;
+}
+
+// ─────────────────────────────────────────────────────────────
 //  CLASSIFY
 // ─────────────────────────────────────────────────────────────
 let busy = false;
@@ -1162,9 +1245,14 @@ async function runClassify() {
   if(busy) return;
   busy=true; setActive(-1); resetSoftmax();
   const k=parseInt(document.getElementById('kcls').value)||50;
+  setSt('running','preprocessing…');
+  
+  // MNIST-style preprocessing: center and crop the drawing
+  const preprocessed = preprocessToMNIST(pixels);
+  
   setSt('running','recognition pass ↑…');
 
-  const recActs=recPass(pixels);
+  const recActs=recPass(preprocessed);
 
   // Light up vis→h0→h1
   layerActs.vis=sampleN(recActs[0],N_VIS);
