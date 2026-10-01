@@ -1035,43 +1035,70 @@ let W = null;
 async function loadWeights() {
   const msg = document.getElementById('lmsg');
   try {
-    // Stream the download with visible progress and a stall timeout:
-    // abort if no bytes arrive for STALL_MS (instead of spinning forever).
-    const STALL_MS = 30000;
-    const ctrl = new AbortController();
-    let stallTimer = setTimeout(() => ctrl.abort(), STALL_MS);
-    let buf;
-    try {
-      msg.textContent = 'downloading… connecting';
-      const resp = await fetch('dbn_weights.bin', { signal: ctrl.signal });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      // content-length is the compressed size when gzip is used, so treat it as approximate
-      const total = +resp.headers.get('content-length') || 0;
-      const reader = resp.body.getReader();
-      const chunks = [];
-      let got = 0;
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value);
-        got += value.length;
+    // Weight sources, tried in order. The jsDelivr URL is pinned to a commit, so it caches
+    // well and always serves exactly these bytes. A source that stalls, or averages below
+    // MIN_KBPS after GRACE_MS, is aborted and the next one is tried (the last one is never
+    // aborted for being slow, only for stalling).
+    const SOURCES = [
+      { name: 'GitHub Pages', url: 'dbn_weights.bin' },
+      { name: 'jsDelivr', url: 'https://cdn.jsdelivr.net/gh/mircea-5/dbn-mnist-demo@3fe594a436d0cf9a0c59e5fbbd238450b0f9e927/dbn_weights.bin' },
+    ];
+    const STALL_MS = 20000, GRACE_MS = 6000, MIN_KBPS = 150;
+
+    async function download(src, isLast) {
+      const ctrl = new AbortController();
+      let reason = null, got = 0;
+      const abort = r => { reason = r; ctrl.abort(); };
+      const t0 = performance.now();
+      let stallTimer = setTimeout(() => abort(`no data for ${STALL_MS / 1000}s`), STALL_MS);
+      const speedTimer = isLast ? null : setInterval(() => {
+        const el = performance.now() - t0;
+        if (el > GRACE_MS && got / 1024 / (el / 1000) < MIN_KBPS) abort('too slow');
+      }, 1000);
+      try {
+        msg.textContent = `downloading from ${src.name}… connecting`;
+        const resp = await fetch(src.url, { signal: ctrl.signal });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        // content-length is the compressed size when gzip is used, so treat it as approximate
+        const total = +resp.headers.get('content-length') || 0;
+        const reader = resp.body.getReader();
+        const chunks = [];
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+          got += value.length;
+          clearTimeout(stallTimer);
+          stallTimer = setTimeout(() => abort(`no data for ${STALL_MS / 1000}s`), STALL_MS);
+          msg.textContent = `downloading from ${src.name}… ${(got / 1e6).toFixed(1)}` +
+            (total ? ` / ~${(total / 1e6).toFixed(1)}` : '') + ' MB';
+        }
+        const bytes = new Uint8Array(got);
+        let off = 0;
+        for (const c of chunks) { bytes.set(c, off); off += c.length; }
+        return bytes.buffer;
+      } catch (err) {
+        if (err.name === 'AbortError') throw new Error(`${src.name}: ${reason || 'aborted'}`);
+        throw new Error(`${src.name}: ${err.message}`);
+      } finally {
         clearTimeout(stallTimer);
-        stallTimer = setTimeout(() => ctrl.abort(), STALL_MS);
-        msg.textContent = `downloading… ${(got / 1e6).toFixed(1)}` +
-          (total ? ` / ~${(total / 1e6).toFixed(1)}` : '') + ' MB';
+        if (speedTimer) clearInterval(speedTimer);
       }
-      const bytes = new Uint8Array(got);
-      let off = 0;
-      for (const c of chunks) { bytes.set(c, off); off += c.length; }
-      buf = bytes.buffer;
-    } catch (err) {
-      if (err.name === 'AbortError') {
-        throw new Error(`download stalled (no data for ${STALL_MS / 1000}s) — try reloading`);
-      }
-      throw err;
-    } finally {
-      clearTimeout(stallTimer);
     }
+
+    let buf = null, lastErr = null;
+    for (let i = 0; i < SOURCES.length && !buf; i++) {
+      try {
+        buf = await download(SOURCES[i], i === SOURCES.length - 1);
+      } catch (err) {
+        lastErr = err;
+        if (i < SOURCES.length - 1) {
+          msg.textContent = `${err.message} — trying ${SOURCES[i + 1].name}…`;
+          await new Promise(r => setTimeout(r, 600));
+        }
+      }
+    }
+    if (!buf) throw lastErr || new Error('download failed');
     msg.textContent = 'parsing…';
     const hlen = new DataView(buf).getUint32(0, true);
     const hbytes = new Uint8Array(buf, 4, hlen);
