@@ -228,7 +228,7 @@ header h1 { font-size: clamp(1.3rem, 5vw, 2rem); }
 <div id="overlay">
   <div class="sp"></div>
   <h2>Loading weights</h2>
-  <p id="lmsg">fetching dbn_weights.bin…</p>
+  <p id="lmsg">fetching weights…</p>
 </div>
 
 <header>
@@ -1032,16 +1032,30 @@ function resetSoftmax() {
 // ─────────────────────────────────────────────────────────────
 let W = null;
 
+let _f16tbl = null;
+// Lookup table: every 16-bit half-float pattern -> float32 value
+function f16Table() {
+  if (_f16tbl) return _f16tbl;
+  const t = new Float32Array(65536);
+  for (let h = 0; h < 65536; h++) {
+    const sign = (h & 0x8000) ? -1 : 1, ex = (h >> 10) & 31, fr = h & 1023;
+    t[h] = ex === 0  ? sign * fr * 5.960464477539063e-8          // subnormal: fr * 2^-24
+         : ex === 31 ? (fr ? NaN : sign * Infinity)
+         : sign * (1 + fr / 1024) * Math.pow(2, ex - 15);
+  }
+  return (_f16tbl = t);
+}
+
 async function loadWeights() {
   const msg = document.getElementById('lmsg');
   try {
-    // Weight sources, tried in order. The jsDelivr URL is pinned to a commit, so it caches
-    // well and always serves exactly these bytes. A source that stalls, or averages below
-    // MIN_KBPS after GRACE_MS, is aborted and the next one is tried (the last one is never
-    // aborted for being slow, only for stalling).
+    // Weight sources, tried in order. A source that stalls, or averages below MIN_KBPS after
+    // GRACE_MS, is aborted and the next one is tried (the last one is never aborted for
+    // being slow, only for stalling). The weights file never changes, so the jsDelivr copy
+    // can safely track main.
     const SOURCES = [
-      { name: 'GitHub Pages', url: 'dbn_weights.bin' },
-      { name: 'jsDelivr', url: 'https://cdn.jsdelivr.net/gh/mircea-5/dbn-mnist-demo@3fe594a436d0cf9a0c59e5fbbd238450b0f9e927/dbn_weights.bin' },
+      { name: 'GitHub Pages', url: 'dbn_weights_f16.bin' },
+      { name: 'jsDelivr', url: 'https://cdn.jsdelivr.net/gh/mircea-5/dbn-mnist-demo@main/dbn_weights_f16.bin' },
     ];
     const STALL_MS = 20000, GRACE_MS = 6000, MIN_KBPS = 150;
 
@@ -1111,8 +1125,20 @@ async function loadWeights() {
     for (let i = 0; i < header.length; i += chunkSize) {
       const chunk = header.slice(i, Math.min(i + chunkSize, header.length));
       for (const e of chunk) {
-        const copied = buf.slice(dataStart + e.offset, dataStart + e.offset + e.length * 4);
-        const fa = new Float32Array(copied);
+        let fa;
+        if (e.dtype === 'f16') {
+          // float16 file: view as uint16 (aligned when possible, else copy) and widen to float32
+          const o = dataStart + e.offset;
+          const u16 = (o % 2 === 0)
+            ? new Uint16Array(buf, o, e.length)
+            : new Uint16Array(buf.slice(o, o + e.length * 2));
+          const tbl = f16Table();
+          fa = new Float32Array(e.length);
+          for (let k = 0; k < e.length; k++) fa[k] = tbl[u16[k]];
+        } else {
+          const copied = buf.slice(dataStart + e.offset, dataStart + e.offset + e.length * 4);
+          fa = new Float32Array(copied);
+        }
         if (e.shape.length === 2) {
           const [R, C] = e.shape;
           const rows = [];
@@ -1142,7 +1168,7 @@ async function loadWeights() {
     setSt('done', 'ready — draw or tap a softmax unit');
     render();
   } catch(e) {
-    const hint = /^HTTP /.test(e.message) ? '<br>place dbn_weights.bin beside index.html' : '';
+    const hint = /^HTTP /.test(e.message) ? '<br>place dbn_weights_f16.bin beside index.html' : '';
     document.getElementById('lmsg').innerHTML =
       `<span style="color:#fb7185">${e.message}</span>${hint}`;
     setTimeout(() => {
