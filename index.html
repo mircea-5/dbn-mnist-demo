@@ -1035,10 +1035,44 @@ let W = null;
 async function loadWeights() {
   const msg = document.getElementById('lmsg');
   try {
-    const resp = await fetch('dbn_weights.bin');
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    // Stream the download with visible progress and a stall timeout:
+    // abort if no bytes arrive for STALL_MS (instead of spinning forever).
+    const STALL_MS = 30000;
+    const ctrl = new AbortController();
+    let stallTimer = setTimeout(() => ctrl.abort(), STALL_MS);
+    let buf;
+    try {
+      msg.textContent = 'downloading… connecting';
+      const resp = await fetch('dbn_weights.bin', { signal: ctrl.signal });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      // content-length is the compressed size when gzip is used, so treat it as approximate
+      const total = +resp.headers.get('content-length') || 0;
+      const reader = resp.body.getReader();
+      const chunks = [];
+      let got = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        got += value.length;
+        clearTimeout(stallTimer);
+        stallTimer = setTimeout(() => ctrl.abort(), STALL_MS);
+        msg.textContent = `downloading… ${(got / 1e6).toFixed(1)}` +
+          (total ? ` / ~${(total / 1e6).toFixed(1)}` : '') + ' MB';
+      }
+      const bytes = new Uint8Array(got);
+      let off = 0;
+      for (const c of chunks) { bytes.set(c, off); off += c.length; }
+      buf = bytes.buffer;
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        throw new Error(`download stalled (no data for ${STALL_MS / 1000}s) — try reloading`);
+      }
+      throw err;
+    } finally {
+      clearTimeout(stallTimer);
+    }
     msg.textContent = 'parsing…';
-    const buf = await resp.arrayBuffer();
     const hlen = new DataView(buf).getUint32(0, true);
     const hbytes = new Uint8Array(buf, 4, hlen);
     const header = JSON.parse(new TextDecoder().decode(hbytes).replace(/\0/g,''));
@@ -1081,8 +1115,9 @@ async function loadWeights() {
     setSt('done', 'ready — draw or tap a softmax unit');
     render();
   } catch(e) {
+    const hint = /^HTTP /.test(e.message) ? '<br>place dbn_weights.bin beside index.html' : '';
     document.getElementById('lmsg').innerHTML =
-      `<span style="color:#fb7185">${e.message}</span><br>place dbn_weights.bin beside index.html`;
+      `<span style="color:#fb7185">${e.message}</span>${hint}`;
     setTimeout(() => {
       const ov = document.getElementById('overlay');
       ov.style.opacity = '0'; setTimeout(() => ov.style.display='none', 400);
